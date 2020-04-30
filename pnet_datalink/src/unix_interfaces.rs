@@ -30,7 +30,11 @@ pub fn interfaces() -> Vec<NetworkInterface> {
         };
         old.ips.extend_from_slice(&new.ips[..]);
         old.flags = old.flags | new.flags;
-        old.scope_id = old.scope_id.or(new.scope_id);
+        old.scope_id = match old.scope_id {
+            None => new.scope_id,
+            Some(0) => new.scope_id,
+            Some(n) => Some(n)
+        };
     }
 
     let mut ifaces: Vec<NetworkInterface> = Vec::new();
