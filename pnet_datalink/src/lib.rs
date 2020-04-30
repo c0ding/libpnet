@@ -219,6 +219,8 @@ pub struct NetworkInterface {
     pub ips: Vec<IpNetwork>,
     /// Operating system specific flags for the interface.
     pub flags: u32,
+    /// Scope ID for IPv6 addresses
+    pub scope_id: Option<u32>,
 }
 
 impl NetworkInterface {

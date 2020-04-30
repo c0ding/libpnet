@@ -183,6 +183,7 @@ pub fn interfaces() -> Vec<NetworkInterface> {
                 mac: None,
                 ips: Vec::new(),
                 flags: 0,
+                scope_id: None,
             })
             .collect()
     } else {

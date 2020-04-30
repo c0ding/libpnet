@@ -30,6 +30,7 @@ pub fn interfaces() -> Vec<NetworkInterface> {
         };
         old.ips.extend_from_slice(&new.ips[..]);
         old.flags = old.flags | new.flags;
+        old.scope_id = old.scope_id.or(new.scope_id);
     }
 
     let mut ifaces: Vec<NetworkInterface> = Vec::new();
@@ -44,8 +45,8 @@ pub fn interfaces() -> Vec<NetworkInterface> {
             let c_str = (*addr).ifa_name as *const c_char;
             let bytes = CStr::from_ptr(c_str).to_bytes();
             let name = from_utf8_unchecked(bytes).to_owned();
-            let (mac, ip) = sockaddr_to_network_addr((*addr).ifa_addr as *const libc::sockaddr);
-            let (_, netmask) =
+            let (mac, ip, scope) = sockaddr_to_network_addr((*addr).ifa_addr as *const libc::sockaddr);
+            let (_, netmask, _) =
                 sockaddr_to_network_addr((*addr).ifa_netmask as *const libc::sockaddr);
             let prefix = netmask
                 .and_then(|netmask| ip_mask_to_prefix(netmask).ok())
@@ -57,6 +58,7 @@ pub fn interfaces() -> Vec<NetworkInterface> {
                 mac: mac,
                 ips: network.into_iter().collect(),
                 flags: (*addr).ifa_flags,
+                scope_id: scope,
             };
             let mut found: bool = false;
             for iface in &mut ifaces {
@@ -83,12 +85,12 @@ pub fn interfaces() -> Vec<NetworkInterface> {
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
-fn sockaddr_to_network_addr(sa: *const libc::sockaddr) -> (Option<MacAddr>, Option<IpAddr>) {
+fn sockaddr_to_network_addr(sa: *const libc::sockaddr) -> (Option<MacAddr>, Option<IpAddr>, Option<u32>) {
     use std::net::SocketAddr;
 
     unsafe {
         if sa.is_null() {
-            (None, None)
+            (None, None, None)
         } else if (*sa).sa_family as libc::c_int == libc::AF_PACKET {
             let sll: *const libc::sockaddr_ll = mem::transmute(sa);
             let mac = MacAddr(
@@ -100,7 +102,7 @@ fn sockaddr_to_network_addr(sa: *const libc::sockaddr) -> (Option<MacAddr>, Opti
                 (*sll).sll_addr[5],
             );
 
-            (Some(mac), None)
+            (Some(mac), None, None)
         } else {
             let addr = pnet_sys::sockaddr_to_addr(
                 mem::transmute(sa),
@@ -108,22 +110,22 @@ fn sockaddr_to_network_addr(sa: *const libc::sockaddr) -> (Option<MacAddr>, Opti
             );
 
             match addr {
-                Ok(SocketAddr::V4(sa)) => (None, Some(IpAddr::V4(*sa.ip()))),
-                Ok(SocketAddr::V6(sa)) => (None, Some(IpAddr::V6(*sa.ip()))),
-                Err(_) => (None, None),
+                Ok(SocketAddr::V4(sa)) => (None, Some(IpAddr::V4(*sa.ip())), None),
+                Ok(SocketAddr::V6(sa)) => (None, Some(IpAddr::V6(*sa.ip())), Some(sa.scope_id())),
+                Err(_) => (None, None, None),
             }
         }
     }
 }
 
 #[cfg(any(target_os = "openbsd", target_os = "freebsd", target_os = "macos", target_os = "ios"))]
-fn sockaddr_to_network_addr(sa: *const libc::sockaddr) -> (Option<MacAddr>, Option<IpAddr>) {
+fn sockaddr_to_network_addr(sa: *const libc::sockaddr) -> (Option<MacAddr>, Option<IpAddr>, Option<u32>) {
     use bindings::bpf;
     use std::net::SocketAddr;
 
     unsafe {
         if sa.is_null() {
-            (None, None)
+            (None, None, None)
         } else if (*sa).sa_family as libc::c_int == bpf::AF_LINK {
             let sdl: *const bpf::sockaddr_dl = mem::transmute(sa);
             let nlen = (*sdl).sdl_nlen as usize;
@@ -136,17 +138,17 @@ fn sockaddr_to_network_addr(sa: *const libc::sockaddr) -> (Option<MacAddr>, Opti
                 (*sdl).sdl_data[nlen + 5] as u8,
             );
 
-            (Some(mac), None)
+            (Some(mac), None, None)
         } else {
             let addr = pnet_sys::sockaddr_to_addr(
                 mem::transmute(sa),
                 mem::size_of::<libc::sockaddr_storage>(),
             );
-
+            
             match addr {
-                Ok(SocketAddr::V4(sa)) => (None, Some(IpAddr::V4(*sa.ip()))),
-                Ok(SocketAddr::V6(sa)) => (None, Some(IpAddr::V6(*sa.ip()))),
-                Err(_) => (None, None),
+                Ok(SocketAddr::V4(sa)) => (None, Some(IpAddr::V4(*sa.ip())), None),
+                Ok(SocketAddr::V6(sa)) => (None, Some(IpAddr::V6(*sa.ip())), Some(sa.scope_id())),
+                Err(_) => (None, None, None),
             }
         }
     }

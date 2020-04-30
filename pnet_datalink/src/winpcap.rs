@@ -323,6 +323,7 @@ pub fn interfaces() -> Vec<NetworkInterface> {
                 ips: ips,
                 // flags: (*cursor).Type, // FIXME [windows]
                 flags: 0,
+                scope_id: Some((*cursor).Index)
             });
 
             cursor = (*cursor).Next;

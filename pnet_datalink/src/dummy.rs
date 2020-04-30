@@ -171,6 +171,7 @@ pub fn dummy_interface(i: u8) -> NetworkInterface {
         mac: Some(MacAddr::new(1, 2, 3, 4, 5, i)),
         ips: Vec::new(),
         flags: 0,
+        scope_id: None,
     }
 }
 
